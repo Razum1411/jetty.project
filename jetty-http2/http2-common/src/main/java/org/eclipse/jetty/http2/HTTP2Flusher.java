@@ -149,13 +149,9 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
             Entry entry;
             while ((entry = entries.poll()) != null)
             {
-                Integer streamId = entry.stream==null?0:entry.stream.getId();
-                StreamHead head = pending.get(streamId);
-                if (head==null)
-                {
-                    head = new StreamHead(entry.stream);
-                    pending.put(streamId,head);
-                }
+                IStream stream = entry.stream;
+                Integer streamId = stream==null?0:stream.getId();
+                StreamHead head = pending.computeIfAbsent(streamId,id->new StreamHead(stream));
                 head.entries.add(entry);
             }
         }
@@ -167,7 +163,7 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
             return Action.IDLE;
         }
 
-        while (true)
+        outer: while (true)
         {
             boolean progress = false;
 
@@ -196,6 +192,7 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
                     {
                         if (LOG.isDebugEnabled())
                             LOG.debug("Stale {}", entry);
+                        // TODO move this code to StreamHead
                         EofException eof = new EofException("reset");
                         head.entries.forEach(e->e.failed(eof));
                         head.entries.clear();
@@ -218,15 +215,28 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
                                 head.entries.removeFirst();
                                 if (head.entries.isEmpty())
                                     i.remove(); // TODO should we leave and reuse?
-                                else if (head.stream==null && lease.getTotalLength() < writeThreshold )
-                                    continue; // Keep generating control frames
+                            }
+
+                            // Only try a single data entry per iteration
+                            if (entry.isData())
+                                break;
+                            
+                            if (lease.getTotalLength() >= writeThreshold)
+                            {
+                                if (LOG.isDebugEnabled())
+                                    LOG.debug("Write threshold exceeded {}>{}", lease.getTotalLength(), writeThreshold);
+                                if (stalled==null)
+                                    stalled = i.hasNext()?i.next():null;
+                                break outer;
                             }
                         }
-                        else if (stalled==null)
+                        else
                         {
-                            stalled=head;
                             if (LOG.isDebugEnabled())
                                 LOG.debug("Stalled {}/{}", head, entry);
+
+                            if (stalled==null)
+                                stalled=head;
                         }
                     }
                     catch (Throwable failure)
@@ -237,15 +247,10 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
                         failed(failure);
                         return Action.SUCCEEDED;
                     }
-
-                    // Only try a single entry per data stream per iteration
-                    break;
                 }
             }
 
             if (!progress)
-                break;
-            if (lease.getTotalLength() >= writeThreshold)
                 break;
         }
 
