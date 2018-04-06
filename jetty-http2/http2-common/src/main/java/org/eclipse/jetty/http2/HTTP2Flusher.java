@@ -171,14 +171,6 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
             {
                 StreamHead head = i.next();
                 
-                // Skip over any data frames to any stalled data frame.
-                if (stalled!=null)
-                {
-                    while (head!=stalled && i.hasNext() && head.stream!=null)
-                        head = i.next();
-                    stalled = null;
-                }
-
                 // Process entries
                 while(!head.entries.isEmpty())
                 {
@@ -317,6 +309,9 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
                     pending);
         finish();
         super.succeeded();
+        
+        ArrayList<String> list = new ArrayList<>();
+        
     }
 
     private void finish()
@@ -324,6 +319,20 @@ public class HTTP2Flusher extends IteratingCallback implements Dumpable
         lease.recycle();
         processed.forEach(Entry::succeeded);
         processed.clear();
+        
+        if (stalled!=null)
+        {
+            List<StreamHead> readd = new ArrayList<>();
+            for (Iterator<StreamHead> i = pending.values().iterator(); i.hasNext();)
+            {
+                StreamHead head = i.next();
+                if (stalled==head)
+                    break;
+                i.remove();
+                readd.add(head);
+            }
+            readd.forEach(h->pending.put(h.stream==null?0:h.stream.getId(),h));
+        }
     }
 
     @Override
