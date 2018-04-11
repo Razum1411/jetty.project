@@ -486,6 +486,7 @@ public class HttpClientTest extends AbstractHttpClientServerTest
 
         client.setMaxConnectionsPerDestination(1);
 
+<<<<<<< HEAD
         try (StacklessLogging stackless = new StacklessLogging(org.eclipse.jetty.server.HttpChannel.class))
         {
             final CountDownLatch latch = new CountDownLatch(2);
@@ -494,6 +495,21 @@ public class HttpClientTest extends AbstractHttpClientServerTest
             .path("/one")
             .onResponseFailure((response, failure) -> latch.countDown())
             .send(null);
+=======
+        final CountDownLatch latch = new CountDownLatch(2);
+        client.newRequest("localhost", connector.getLocalPort())
+                .scheme(scheme)
+                .path("/one")
+                .onResponseFailure(new Response.FailureListener()
+                {
+                    @Override
+                    public void onFailure(Response response, Throwable failure)
+                    {
+                        latch.countDown();
+                    }
+                })
+                .send(null);
+>>>>>>> eaa4c70... Issue #2065 - Backport #347 to Jetty 9.2.x.
 
             client.newRequest("localhost", connector.getLocalPort())
             .scheme(scheme)
@@ -505,8 +521,12 @@ public class HttpClientTest extends AbstractHttpClientServerTest
             })
             .send(null);
 
+<<<<<<< HEAD
             Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
         }
+=======
+        Assert.assertTrue(latch.await(5, TimeUnit.SECONDS));
+>>>>>>> eaa4c70... Issue #2065 - Backport #347 to Jetty 9.2.x.
     }
 
     @Test
